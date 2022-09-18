@@ -1,5 +1,7 @@
 # Data manipulation
 import pandas as pd
+import json
+import numpy as np
 
 # Strings
 import re
@@ -48,6 +50,7 @@ def get_noaa_data(drive: object) -> tuple:
     noaa_headers = pd.Series(
         noaa_headers_string.split("\n")[1].strip().split(" ")
     ).str.lower()
+    noaa_headers = [f"noaa_{col}" for col in noaa_headers]
 
     # Load noaa readme
     file = drive.CreateFile({"id": noaa_readme_id})
@@ -93,23 +96,23 @@ def get_sense_data(drive: object) -> pd.DataFrame:
         parse_dates=[0],
         infer_datetime_format=True,
     )
-    sense_data.columns = sense_data.columns.str.lower().str.replace(" ", "_")
+    sense_data.columns = [
+        f"sense_{col}" for col in sense_data.columns.str.lower().str.replace(" ", "_")
+    ]
 
     return sense_data
 
 
-def get_nest_data(drive: object) -> pd.DataFrame:
+def get_nest_data(drive: object) -> tuple():
     """Download nest data from google drive.
 
     Args:
         drive (object): The authenticated drive handler object.
 
     Returns:
-        dataframe: The nest dataframe.
+        tuple[dataframe, dataframe]: The nest sensor dataframe and summary dataframe.
     """
 
-    # Get ids of csv files
-    nest_data_ids = {}
     locations = [
         "Data",
         "home_energy_audit",
@@ -119,134 +122,113 @@ def get_nest_data(drive: object) -> pd.DataFrame:
         "09AA01AC481614FL",
         "2022",
     ]
+
+    # Get ids of csv files
+    nest_sensor_data_ids = {}
+
     ## Nest packages the files into monthly breakdowns
     for i in range(1, 8):
         nest_folder_name = f"0{i}"
-        nest_data_name = f"2022-{nest_folder_name}-sensors.csv"
-        full_location = locations.copy() + [nest_folder_name, nest_data_name]
-        nest_data_id = get_gdrive_ids(drive, full_location)
-        nest_data_ids[nest_data_name] = nest_data_id
+        nest_sensor_data_name = f"2022-{nest_folder_name}-sensors.csv"
+        full_location = locations.copy() + [nest_folder_name, nest_sensor_data_name]
+        nest_sensor_data_id = get_gdrive_ids(drive, full_location)
+        nest_sensor_data_ids[nest_sensor_data_name] = nest_sensor_data_id
 
     # Load monthly Nest sensor files
-    nest_data = []
-    for nest_data_id in nest_data_ids.values():
-        file = drive.CreateFile({"id": nest_data_id})
-        nest_data_string = file.GetContentString()
-        nest_data.append(pd.read_csv(StringIO(nest_data_string)))
+    nest_sensor_data = []
+    for nest_sensor_data_id in nest_sensor_data_ids.values():
+        file = drive.CreateFile({"id": nest_sensor_data_id})
+        nest_sensor_data_string = file.GetContentString()
+        nest_sensor_data.append(pd.read_csv(StringIO(nest_sensor_data_string)))
 
     # Combine monthly Nest files and clean column names
-    nest_data = pd.concat(nest_data)
-    nest_data.columns = (
-        nest_data.columns.str.replace("(", "_", regex=True)
+    nest_sensor_data = pd.concat(nest_sensor_data)
+    nest_sensor_data.columns = [
+        f"nest_{col}"
+        for col in nest_sensor_data.columns.str.replace("(", "_", regex=True)
         .str.replace(")", "", regex=True)
         .str.lower()
-    )
+    ]
 
-    nest_sensor_data = nest_data.copy()
+    # Get ids of json files
+    nest_summary_data_ids = {}
+
+    ## Nest packages the files into monthly breakdowns
+    for i in range(1, 8):
+        nest_folder_name = f"0{i}"
+        nest_summary_data_name = f"2022-{nest_folder_name}-summary.json"
+        full_location = locations.copy() + [nest_folder_name, nest_summary_data_name]
+        nest_summary_data_id = get_gdrive_ids(drive, full_location)
+        nest_summary_data_ids[nest_summary_data_name] = nest_summary_data_id
+
+    # Load monthly Nest files
+    nest_summary_data = []
+    for nest_summary_data_id in nest_summary_data_ids.values():
+        file = drive.CreateFile({"id": nest_summary_data_id})
+        nest_summary_data_string = file.GetContentString()
+        nest_summary_data.append(json.loads(nest_summary_data_string))
+
+    # Declare mapping structure
+    nest_event_data = {
+        "nest_start_ts": [],
+        "nest_duration": [],
+        "nest_event_type": [],
+        "nest_set_point_type": [],
+        "nest_set_point_schedule_type": [],
+        "nest_heating_target": [],
+        "nest_cooling_target": [],
+        "nest_touched_ts": [],
+        "nest_touched_by": [],
+        "nest_touched_where": [],
+    }
+
+    # Traverse summary data and extract datapoints if available
+    for month in nest_summary_data:
+        for day in month:
+            for event in month[day]["events"]:
+                nest_event_data["nest_start_ts"].append(event["startTs"])
+                nest_event_data["nest_duration"].append(event["duration"])
+                nest_event_data["nest_event_type"].append(event["eventType"])
+                try:
+                    nest_event_data["nest_set_point_type"].append(
+                        event["setPoint"]["setPointType"]
+                    )
+                    nest_event_data["nest_set_point_schedule_type"].append(
+                        event["setPoint"]["scheduleType"]
+                    )
+                    nest_event_data["nest_heating_target"].append(
+                        event["setPoint"]["targets"]["heatingTarget"]
+                    )
+                    nest_event_data["nest_cooling_target"].append(
+                        event["setPoint"]["targets"]["coolingTarget"]
+                    )
+                    nest_event_data["nest_touched_ts"].append(
+                        event["setPoint"]["touchedWhen"]
+                    )
+                    nest_event_data["nest_touched_by"].append(
+                        event["setPoint"]["touchedBy"]
+                    )
+                    nest_event_data["nest_touched_where"].append(
+                        event["setPoint"]["touchedWhere"]
+                    )
+                # Some events do not have a setPoint
+                except:
+                    nest_event_data["nest_set_point_type"].append("na")
+                    nest_event_data["nest_set_point_schedule_type"].append("na")
+                    nest_event_data["nest_heating_target"].append("na")
+                    nest_event_data["nest_cooling_target"].append("na")
+                    nest_event_data["nest_touched_ts"].append("na")
+                    nest_event_data["nest_touched_by"].append("na")
+                    nest_event_data["nest_touched_where"].append("na")
+
+    # Convert data to DataFrame
+    nest_summary_data = pd.DataFrame(nest_event_data)
+    nest_summary_data = nest_summary_data.replace("na", np.nan)
+    nest_summary_data["nest_start_ts"] = pd.to_datetime(
+        nest_summary_data.nest_start_ts
+    ).dt.tz_convert("US/Central")
+    nest_summary_data["nest_touched_ts"] = pd.to_datetime(
+        nest_summary_data.nest_touched_ts
+    ).dt.tz_convert("US/Central")
 
     return nest_sensor_data, nest_summary_data
-
-
-from gdrive import make_drive
-from gdrive import get_gdrive_ids
-import pathlib, os
-import json
-import pandas as pd
-import numpy as np
-
-home_dir = pathlib.Path(os.path.realpath("__file__")).parents[1]
-drive = make_drive(home_dir)
-
-
-nest_data_ids = {}
-locations = [
-    "Data",
-    "home_energy_audit",
-    "nest_thermostat_data_2022",
-    "Nest",
-    "thermostats",
-    "09AA01AC481614FL",
-    "2022",
-]
-## Nest packages the files into monthly breakdowns
-for i in range(1, 8):
-    nest_folder_name = f"0{i}"
-    nest_data_name = f"2022-{nest_folder_name}-summary.json"
-    full_location = locations.copy() + [nest_folder_name, nest_data_name]
-    nest_data_id = get_gdrive_ids(drive, full_location)
-    nest_data_ids[nest_data_name] = nest_data_id
-
-# Load monthly Nest files
-nest_data = []
-for nest_data_id in nest_data_ids.values():
-    file = drive.CreateFile({"id": nest_data_id})
-    nest_data_string = file.GetContentString()
-    nest_data.append(json.loads(nest_data_string))
-
-event_data = {
-    "nest_start_ts": [],
-    "nest_duration": [],
-    "nest_event_type": [],
-    "nest_set_point_type": [],
-    "nest_set_point_schedule_type": [],
-    "nest_heating_target": [],
-    "nest_cooling_target": [],
-    "nest_touched_ts": [],
-    "nest_touched_by": [],
-    "nest_touched_where": [],
-}
-for month in nest_data:
-    for day in month:
-        for event in month[day]["events"]:
-            event_data["nest_start_ts"].append(event["startTs"])
-            event_data["nest_duration"].append(event["duration"])
-            event_data["nest_event_type"].append(event["eventType"])
-            try:
-                event_data["nest_set_point_type"].append(
-                    event["setPoint"]["setPointType"]
-                )
-                event_data["nest_set_point_schedule_type"].append(
-                    event["setPoint"]["scheduleType"]
-                )
-                event_data["nest_heating_target"].append(
-                    event["setPoint"]["targets"]["heatingTarget"]
-                )
-                event_data["nest_cooling_target"].append(
-                    event["setPoint"]["targets"]["coolingTarget"]
-                )
-                event_data["nest_touched_ts"].append(event["setPoint"]["touchedWhen"])
-                event_data["nest_touched_by"].append(event["setPoint"]["touchedBy"])
-                event_data["nest_touched_where"].append(
-                    event["setPoint"]["touchedWhere"]
-                )
-            except:
-                event_data["nest_set_point_type"].append("na")
-                event_data["nest_set_point_schedule_type"].append("na")
-                event_data["nest_heating_target"].append("na")
-                event_data["nest_cooling_target"].append("na")
-                event_data["nest_touched_ts"].append("na")
-                event_data["nest_touched_by"].append("na")
-                event_data["nest_touched_where"].append("na")
-
-nest_summary_data = pd.DataFrame(event_data)
-nest_summary_data = nest_summary_data.replace("na", np.nan)
-nest_summary_data["nest_start_ts"] = pd.to_datetime(
-    nest_summary_data.nest_start_ts
-).dt.tz_convert("US/Central")
-nest_summary_data["nest_touched_ts"] = pd.to_datetime(
-    nest_summary_data.nest_touched_ts
-).dt.tz_convert("US/Central")
-nest_summary_data.dtypes
-nest_summary_data[
-    ["nest_event_type", "nest_set_point_type", "nest_set_point_schedule_type"]
-].value_counts()
-
-event = nest_data[0]["2022-01-02T00:00:00Z"]["events"][1]
-event["setPoint"]["setPointType"]
-
-for k in nest_data[0]["2022-01-02T00:00:00Z"].keys():
-    print(k, ":", type(nest_data[0]["2022-01-02T00:00:00Z"][k]))
-
-import pytz
-
-pytz.all_timezones
