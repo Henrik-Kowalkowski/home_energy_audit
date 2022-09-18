@@ -1,17 +1,15 @@
 # https://stackoverflow.com/questions/24419188/automating-pydrive-verification-process
 
 from pydrive.auth import GoogleAuth
-import os, pathlib, re
-
-home_dir = list(pathlib.Path(os.path.realpath("__file__")).parents)
+import pathlib, re
 
 
-def make_drive_creds(project_path, project_name) -> None:
+def make_drive_creds(project_path: pathlib.Path, project_name: str) -> None:
     """Create or access Google Drive credentials.
 
     Args:
         project_path (object): Pathlib.Path project path.
-        project_name (_type_): Name of project. e.g. home_energy_audit.
+        project_name (str): Name of project. e.g. home_energy_audit.
     """
 
     creds_filename = "my_creds.json"

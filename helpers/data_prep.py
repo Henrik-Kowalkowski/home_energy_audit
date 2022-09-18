@@ -127,7 +127,7 @@ def get_nest_data(drive: object) -> pd.DataFrame:
         nest_data_id = get_gdrive_ids(drive, full_location)
         nest_data_ids[nest_data_name] = nest_data_id
 
-    # Load monthly Nest files
+    # Load monthly Nest sensor files
     nest_data = []
     for nest_data_id in nest_data_ids.values():
         file = drive.CreateFile({"id": nest_data_id})
@@ -142,4 +142,45 @@ def get_nest_data(drive: object) -> pd.DataFrame:
         .str.lower()
     )
 
-    return nest_data
+    nest_sensor_data = nest_data.copy()
+
+    return nest_sensor_data, nest_summary_data
+
+
+from gdrive import make_drive
+from gdrive import get_gdrive_ids
+import pathlib, os
+import json
+import pandas as pd
+
+home_dir = pathlib.Path(os.path.realpath("__file__")).parents[1]
+drive = make_drive(home_dir)
+
+
+nest_data_ids = {}
+locations = [
+    "Data",
+    "home_energy_audit",
+    "nest_thermostat_data_2022",
+    "Nest",
+    "thermostats",
+    "09AA01AC481614FL",
+    "2022",
+]
+## Nest packages the files into monthly breakdowns
+for i in range(1, 8):
+    nest_folder_name = f"0{i}"
+    nest_data_name = f"2022-{nest_folder_name}-summary.json"
+    full_location = locations.copy() + [nest_folder_name, nest_data_name]
+    nest_data_id = get_gdrive_ids(drive, full_location)
+    nest_data_ids[nest_data_name] = nest_data_id
+
+# Load monthly Nest files
+nest_data = []
+for nest_data_id in nest_data_ids.values():
+    file = drive.CreateFile({"id": nest_data_id})
+    nest_data_string = file.GetContentString()
+    nest_data.append(json.loads(nest_data_string))
+
+for k in nest_data[0]['2022-01-02T00:00:00Z'].keys():
+    print(k, ":", type(nest_data[0]['2022-01-02T00:00:00Z'][k]))
