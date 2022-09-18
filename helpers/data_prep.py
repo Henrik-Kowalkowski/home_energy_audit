@@ -152,6 +152,7 @@ from gdrive import get_gdrive_ids
 import pathlib, os
 import json
 import pandas as pd
+import numpy as np
 
 home_dir = pathlib.Path(os.path.realpath("__file__")).parents[1]
 drive = make_drive(home_dir)
@@ -182,5 +183,70 @@ for nest_data_id in nest_data_ids.values():
     nest_data_string = file.GetContentString()
     nest_data.append(json.loads(nest_data_string))
 
-for k in nest_data[0]['2022-01-02T00:00:00Z'].keys():
-    print(k, ":", type(nest_data[0]['2022-01-02T00:00:00Z'][k]))
+event_data = {
+    "nest_start_ts": [],
+    "nest_duration": [],
+    "nest_event_type": [],
+    "nest_set_point_type": [],
+    "nest_set_point_schedule_type": [],
+    "nest_heating_target": [],
+    "nest_cooling_target": [],
+    "nest_touched_ts": [],
+    "nest_touched_by": [],
+    "nest_touched_where": [],
+}
+for month in nest_data:
+    for day in month:
+        for event in month[day]["events"]:
+            event_data["nest_start_ts"].append(event["startTs"])
+            event_data["nest_duration"].append(event["duration"])
+            event_data["nest_event_type"].append(event["eventType"])
+            try:
+                event_data["nest_set_point_type"].append(
+                    event["setPoint"]["setPointType"]
+                )
+                event_data["nest_set_point_schedule_type"].append(
+                    event["setPoint"]["scheduleType"]
+                )
+                event_data["nest_heating_target"].append(
+                    event["setPoint"]["targets"]["heatingTarget"]
+                )
+                event_data["nest_cooling_target"].append(
+                    event["setPoint"]["targets"]["coolingTarget"]
+                )
+                event_data["nest_touched_ts"].append(event["setPoint"]["touchedWhen"])
+                event_data["nest_touched_by"].append(event["setPoint"]["touchedBy"])
+                event_data["nest_touched_where"].append(
+                    event["setPoint"]["touchedWhere"]
+                )
+            except:
+                event_data["nest_set_point_type"].append("na")
+                event_data["nest_set_point_schedule_type"].append("na")
+                event_data["nest_heating_target"].append("na")
+                event_data["nest_cooling_target"].append("na")
+                event_data["nest_touched_ts"].append("na")
+                event_data["nest_touched_by"].append("na")
+                event_data["nest_touched_where"].append("na")
+
+nest_summary_data = pd.DataFrame(event_data)
+nest_summary_data = nest_summary_data.replace("na", np.nan)
+nest_summary_data["nest_start_ts"] = pd.to_datetime(
+    nest_summary_data.nest_start_ts
+).dt.tz_convert("US/Central")
+nest_summary_data["nest_touched_ts"] = pd.to_datetime(
+    nest_summary_data.nest_touched_ts
+).dt.tz_convert("US/Central")
+nest_summary_data.dtypes
+nest_summary_data[
+    ["nest_event_type", "nest_set_point_type", "nest_set_point_schedule_type"]
+].value_counts()
+
+event = nest_data[0]["2022-01-02T00:00:00Z"]["events"][1]
+event["setPoint"]["setPointType"]
+
+for k in nest_data[0]["2022-01-02T00:00:00Z"].keys():
+    print(k, ":", type(nest_data[0]["2022-01-02T00:00:00Z"][k]))
+
+import pytz
+
+pytz.all_timezones
