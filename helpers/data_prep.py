@@ -110,7 +110,7 @@ def get_nest_data(drive: object) -> tuple():
         drive (object): The authenticated drive handler object.
 
     Returns:
-        tuple[dataframe, dataframe]: The nest sensor dataframe and summary dataframe.
+        tuple[dataframe, dataframe, dataframe]: The nest sensor dataframe, cycle dataframe, and event dataframe.
     """
 
     locations = [
@@ -169,8 +169,38 @@ def get_nest_data(drive: object) -> tuple():
         nest_summary_data.append(json.loads(nest_summary_data_string))
 
     # Declare mapping structure
-    nest_event_data = {
+    nest_cycle_data = {
         "nest_start_ts": [],
+        "nest_end_ts": [],
+        "nest_heat1": [],
+        "nest_cool1": [],
+        "nest_fan": [],
+        "nest_caption": [],
+    }
+
+    # Traverse summary data and extract datapoints
+    for month in nest_summary_data:
+        for day in month:
+            for cycle in month[day]["cycles"]:
+                nest_cycle_data["nest_start_ts"].append(
+                    cycle["caption"]["parameters"]["startTime"]
+                )
+                nest_cycle_data["nest_end_ts"].append(
+                    cycle["caption"]["parameters"]["endTime"]
+                )
+                nest_cycle_data["nest_heat1"].append(cycle["heat1"])
+                nest_cycle_data["nest_cool1"].append(cycle["cool1"])
+                nest_cycle_data["nest_fan"].append(cycle["fan"])
+                nest_cycle_data["nest_caption"].append(cycle["caption"]["plainText"])
+
+    nest_cycle_data = pd.DataFrame(nest_cycle_data)
+    nest_cycle_data["nest_start_ts"] = pd.to_datetime(
+        nest_cycle_data.nest_start_ts
+    ).dt.tz_convert("US/Central")
+
+    # Declare mapping structure
+    nest_event_data = {
+        "nest_event_ts": [],
         "nest_duration": [],
         "nest_event_type": [],
         "nest_set_point_type": [],
@@ -186,8 +216,7 @@ def get_nest_data(drive: object) -> tuple():
     for month in nest_summary_data:
         for day in month:
             for event in month[day]["events"]:
-                nest_event_data["nest_start_ts"].append(event["startTs"])
-                nest_event_data["nest_duration"].append(event["duration"])
+                nest_event_data["nest_event_ts"].append(event["startTs"])
                 nest_event_data["nest_event_type"].append(event["eventType"])
                 try:
                     nest_event_data["nest_set_point_type"].append(
@@ -202,9 +231,6 @@ def get_nest_data(drive: object) -> tuple():
                     nest_event_data["nest_cooling_target"].append(
                         event["setPoint"]["targets"]["coolingTarget"]
                     )
-                    nest_event_data["nest_touched_ts"].append(
-                        event["setPoint"]["touchedWhen"]
-                    )
                     nest_event_data["nest_touched_by"].append(
                         event["setPoint"]["touchedBy"]
                     )
@@ -217,18 +243,14 @@ def get_nest_data(drive: object) -> tuple():
                     nest_event_data["nest_set_point_schedule_type"].append("na")
                     nest_event_data["nest_heating_target"].append("na")
                     nest_event_data["nest_cooling_target"].append("na")
-                    nest_event_data["nest_touched_ts"].append("na")
                     nest_event_data["nest_touched_by"].append("na")
                     nest_event_data["nest_touched_where"].append("na")
 
     # Convert data to DataFrame
-    nest_summary_data = pd.DataFrame(nest_event_data)
-    nest_summary_data = nest_summary_data.replace("na", np.nan)
-    nest_summary_data["nest_start_ts"] = pd.to_datetime(
-        nest_summary_data.nest_start_ts
-    ).dt.tz_convert("US/Central")
-    nest_summary_data["nest_touched_ts"] = pd.to_datetime(
-        nest_summary_data.nest_touched_ts
+    nest_event_data = pd.DataFrame(nest_event_data)
+    nest_event_data = nest_event_data.replace("na", np.nan)
+    nest_event_data["nest_event_ts"] = pd.to_datetime(
+        nest_event_data.nest_event_ts
     ).dt.tz_convert("US/Central")
 
-    return nest_sensor_data, nest_summary_data
+    return nest_sensor_data, nest_cycle_data, nest_event_data
