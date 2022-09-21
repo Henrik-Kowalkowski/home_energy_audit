@@ -195,19 +195,20 @@ def get_nest_data(drive: object) -> tuple():
 
     nest_cycle_data = pd.DataFrame(nest_cycle_data)
     nest_cycle_data["nest_start_ts"] = pd.to_datetime(
-        nest_cycle_data.nest_start_ts
-    ).dt.tz_convert("US/Central")
+        nest_cycle_data.nest_start_ts.str[:-5]
+    )
+    nest_cycle_data["nest_end_ts"] = pd.to_datetime(
+        nest_cycle_data.nest_end_ts.str[:-5]
+    )
 
     # Declare mapping structure
     nest_event_data = {
         "nest_event_ts": [],
-        "nest_duration": [],
         "nest_event_type": [],
         "nest_set_point_type": [],
         "nest_set_point_schedule_type": [],
         "nest_heating_target": [],
         "nest_cooling_target": [],
-        "nest_touched_ts": [],
         "nest_touched_by": [],
         "nest_touched_where": [],
     }
@@ -249,8 +250,6 @@ def get_nest_data(drive: object) -> tuple():
     # Convert data to DataFrame
     nest_event_data = pd.DataFrame(nest_event_data)
     nest_event_data = nest_event_data.replace("na", np.nan)
-    nest_event_data["nest_event_ts"] = pd.to_datetime(
-        nest_event_data.nest_event_ts
-    ).dt.tz_convert("US/Central")
+    nest_event_data["nest_event_ts"] = pd.to_datetime(nest_event_data.nest_event_ts)
 
     return nest_sensor_data, nest_cycle_data, nest_event_data
